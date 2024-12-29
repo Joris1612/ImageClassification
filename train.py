@@ -16,22 +16,34 @@ AUTOTUNE = tf.data.AUTOTUNE
 BATCH_SIZE = 4 * strategy.num_replicas_in_sync
 IMAGE_SIZE = [128, 128]
 
+# Define class names manually
+class_names = [
+    "Atelectasis", "Cardiomegaly", "Effusion", "Infiltration", "Mass",
+    "Nodule", "Pneumonia", "Pneumothorax", "Consolidation", "Edema",
+    "Emphysema", "Fibrosis", "Pleural_Thickening", "Hernia"
+]
+
+# Map class names to indices
+label_to_int_mapping = {name: idx for idx, name in enumerate(class_names)}
+
 # Load the CSV file
 label_df = pd.read_csv(r"C:\Users\mathi\OneDrive\Documents\School\Dataset\Data_Entry_2017_v2020.csv")
 
 # Strip extra spaces from column names
 label_df.columns = label_df.columns.str.strip()
 
-# Normalize keys and values in label_dict
-label_dict = {
-    os.path.basename(name).strip().lower(): label.strip()
-    for name, label in zip(label_df["Image Index"], label_df["Finding Labels"])
-}
+label_dict = {}
 
-# Get all unique labels from the label_dict and create an integer mapping
-unique_labels = sorted(set(label_dict.values()))
-label_to_int_mapping = {label: idx for idx, label in enumerate(unique_labels)}
+for idx, row in label_df.iterrows():
+    image_name = os.path.basename(row["Image Index"]).strip().lower()
+    labels = row["Finding Labels"].split("|")
 
+    # Find the first matching class from class_names
+    for label in labels:
+        label = label.strip()
+        if label in class_names:
+            label_dict[image_name] = label
+            break
 
 # Print out the mapping for debugging
 # print(label_to_int_mapping)
@@ -42,6 +54,7 @@ def get_label(file_path):
 
     # Use the label_dict to get the string label, then convert it to an integer
     label_string = label_dict.get(image_name, "unknown")
+
     return label_to_int_mapping.get(label_string, -1)
 
 
@@ -59,11 +72,11 @@ def process_path(file_path):
     label = tf_get_label(file_path)
     img = tf.io.read_file(file_path)
     img = decode_img(img)
-    return img, tf.reshape(label, [])  # Ensure label is a scalar tensor
+    return img, tf.reshape(label, [])
 
 @tf.function
 def preprocess_dataset(image, label):
-    label = tf.one_hot(label, depth=len(unique_labels))
+    label = tf.one_hot(label, depth=len(class_names))
     return image, label
 
 
@@ -94,11 +107,9 @@ def prepare_for_training(ds, cache=False):
     return ds
 
 
-ds = ds.repeat()
 train_ds = prepare_for_training(train_ds)
 val_ds = prepare_for_training(val_ds)
-image_batch, label_batch = next(iter(train_ds))
-os.environ['KERAS_BACKEND'] = 'tensorflow'
+
 
 
 def conv_block(filters, inputs):
@@ -130,11 +141,11 @@ def build_model():
     x = layers.GlobalAveragePooling2D()(x)
     x = dense_block(128, 0.5, x)
     x = dense_block(64, 0.3, x)
-    outputs = layers.Dense(len(unique_labels), activation="softmax")(x)
+    outputs = layers.Dense(len(class_names), activation="softmax")(x)
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
 
-checkpoint_cb = keras.callbacks.ModelCheckpoint("XRAY-model-E100.keras", save_best_only=True)
+checkpoint_cb = keras.callbacks.ModelCheckpoint("XRAY-model-E10.keras", save_best_only=True)
 
 early_stopping_cb = keras.callbacks.EarlyStopping(
     patience=10, restore_best_weights=True
@@ -148,7 +159,7 @@ lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
 
 optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
-#update training method calling
+
 
 def main_train():
     with strategy.scope():
@@ -164,7 +175,7 @@ def main_train():
         )
     history = model.fit(
         train_ds,
-        epochs=100,
+        epochs=10,
         validation_data=val_ds,
         callbacks=[checkpoint_cb, early_stopping_cb],
     )
