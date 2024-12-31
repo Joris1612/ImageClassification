@@ -16,7 +16,7 @@ except:
 print("Number of replicas:", strategy.num_replicas_in_sync)
 
 AUTOTUNE = tf.data.AUTOTUNE
-BATCH_SIZE = 4 * strategy.num_replicas_in_sync
+BATCH_SIZE = 32 * strategy.num_replicas_in_sync
 IMAGE_SIZE = [128, 128]
 
 # Define class names manually
@@ -144,14 +144,10 @@ def build_model():
     inputs = keras.Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3))
     x = layers.Rescaling(1.0 / 255)(inputs)
     x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
-    x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
     x = layers.MaxPool2D(pool_size=(1, 1), strides=(1, 1), padding="valid")(x)
-    x = conv_block(16, x)
-    x = conv_block(32, x)
-    x = layers.Dropout(0.3)(x)
+    x = conv_block(8, x)
     x = layers.GlobalAveragePooling2D()(x)
-    x = dense_block(128, 0.5, x)
-    x = dense_block(64, 0.3, x)
+    x = dense_block(32, 0.5, x)
     outputs = layers.Dense(len(class_names), activation="softmax")(x)
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
@@ -165,7 +161,7 @@ early_stopping_cb = keras.callbacks.EarlyStopping(
 )
 # Example of using ExponentialDecay
 lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-    initial_learning_rate=0.1,
+    initial_learning_rate=0.001,
     decay_steps=100000,
     decay_rate=0.96,
     staircase=True)
