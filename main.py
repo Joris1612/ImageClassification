@@ -3,12 +3,14 @@ from validate import validate_model, plot_training_history
 import tensorflow as tf
 
 def main():
+    epochs = 10
+    name = "XRAY-E10.keras"
     print("Starting training...")
-    #train_model()
+    train_model(epochs, name)
     print("Training completed.")
     # Load the saved model
     print("Loading the trained model...")
-    trained_model = tf.keras.models.load_model("XRAY-model-E10.keras")
+    trained_model = tf.keras.models.load_model(name)
 
     print("Starting validation...")
     validate_model(trained_model, val_ds, class_names)

@@ -2,7 +2,10 @@ import tensorflow as tf
 import pandas as pd
 import os
 import keras
-from keras import layers
+from keras import layers, mixed_precision
+
+policy = mixed_precision.Policy('mixed_float16')
+mixed_precision.set_global_policy(policy)
 
 try:
     tpu = tf.distribute.cluster_resolver.TPUClusterResolver.connect()
@@ -87,9 +90,17 @@ ds = ds.map(process_path, num_parallel_calls=AUTOTUNE)
 # Apply the preprocess function
 ds = ds.map(preprocess_dataset)
 
-ds = ds.shuffle(10000)
-train_ds = ds.take(4200)
-val_ds = ds.skip(4200)
+#LC (lower shuffle, more images taken)
+
+total_images = 112120
+ds = ds.shuffle(1000)
+
+# Define the number of training and validation samples (e.g., 80% training, 20% validation)
+train_size = int(0.8 * total_images)
+val_size = total_images - train_size
+
+train_ds = ds.take(train_size)
+val_ds = ds.skip(train_size).take(val_size)
 
 
 def prepare_for_training(ds, cache=False):
@@ -145,7 +156,9 @@ def build_model():
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
 
-checkpoint_cb = keras.callbacks.ModelCheckpoint("XRAY-model-E10.keras", save_best_only=True)
+def get_checkpoint_callback(name):
+    checkpoint_cb = keras.callbacks.ModelCheckpoint(name, save_best_only=True, verbose=1)
+    return checkpoint_cb
 
 early_stopping_cb = keras.callbacks.EarlyStopping(
     patience=10, restore_best_weights=True
@@ -161,7 +174,11 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
 
 
-def main_train():
+def main_train(epochs, name):
+    checkpoint_cb = get_checkpoint_callback(name)
+    early_stopping_cb = keras.callbacks.EarlyStopping(
+        patience=10, restore_best_weights=True
+    )
     with strategy.scope():
         model = build_model()
         model.compile(
@@ -175,16 +192,18 @@ def main_train():
         )
     history = model.fit(
         train_ds,
-        epochs=10,
+        epochs=epochs,
         validation_data=val_ds,
         callbacks=[checkpoint_cb, early_stopping_cb],
     )
+    model.save(name)
     return history, model
+
 
 # Prevent automatic execution when imported
 if __name__ == "__main__":
-    history, model = main_train()
+    history, model = main_train(epochs=10, name="XRAY-model.keras")
 
 
-def train_model():
-    return main_train()
+def train_model(epochs, name):
+    return main_train(epochs, name)
