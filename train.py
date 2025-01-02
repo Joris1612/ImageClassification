@@ -2,8 +2,8 @@ import tensorflow as tf
 import pandas as pd
 import os
 import keras
-from keras import layers, mixed_precision
-from collections import Counter
+from keras import layers, mixed_precision, backend as K
+
 
 policy = mixed_precision.Policy('mixed_float16')
 mixed_precision.set_global_policy(policy)
@@ -15,6 +15,24 @@ try:
 except:
     strategy = tf.distribute.get_strategy()
 print("Number of replicas:", strategy.num_replicas_in_sync)
+
+
+def focal_loss(alpha=0.25, gamma=2.0):
+    """
+    Focal loss for multi-class classification.
+    Args:
+        alpha: Weighting factor for the class imbalance.
+        gamma: Focusing parameter for modulating the difficulty of samples.
+    Returns:
+        Loss function for use in model.compile.
+    """
+    def loss(y_true, y_pred):
+        y_pred = K.clip(y_pred, K.epsilon(), 1 - K.epsilon())  # Avoid log(0) errors
+        cross_entropy = -y_true * K.log(y_pred)
+        weight = alpha * K.pow(1 - y_pred, gamma)
+        return K.sum(weight * cross_entropy, axis=-1)
+    return loss
+
 
 AUTOTUNE = tf.data.AUTOTUNE
 BATCH_SIZE = 32 * strategy.num_replicas_in_sync
@@ -51,16 +69,6 @@ for idx, row in label_df.iterrows():
 
 # Print out the mapping for debugging
 # print(label_to_int_mapping)
-
-# Count the occurrences of each label in the label_dict
-class_counts = Counter(label_dict.values())
-
-# Map class counts to indices based on the `label_to_int_mapping`
-class_counts = {label_to_int_mapping[label]: count for label, count in class_counts.items()}
-
-# Fill in missing classes with zero count
-for i in range(len(class_names)):
-    class_counts.setdefault(i, 0)
 
 def get_label(file_path):
     # Extract the filename from the full path
@@ -183,7 +191,6 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
 def main_train(epochs, name):
     checkpoint_cb = get_checkpoint_callback(name)
-    class_weights = {i: total_images / (len(class_names) * class_counts[i]) for i in range(len(class_names))}
     early_stopping_cb = keras.callbacks.EarlyStopping(
         patience=10, restore_best_weights=True
     )
@@ -191,7 +198,7 @@ def main_train(epochs, name):
         model = build_model()
         model.compile(
             optimizer=optimizer,
-            loss="categorical_crossentropy",
+            loss=focal_loss(alpha=0.25, gamma=2.0),
             metrics=[
                 keras.metrics.BinaryAccuracy(),
                 keras.metrics.Precision(name="precision"),
@@ -203,7 +210,6 @@ def main_train(epochs, name):
         epochs=epochs,
         validation_data=val_ds,
         callbacks=[checkpoint_cb, early_stopping_cb],
-        class_weight=class_weights,
     )
     model.save(name)
     return history, model
