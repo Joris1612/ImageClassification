@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import keras
 from keras import layers, mixed_precision
+from collections import Counter
 
 policy = mixed_precision.Policy('mixed_float16')
 mixed_precision.set_global_policy(policy)
@@ -50,6 +51,16 @@ for idx, row in label_df.iterrows():
 
 # Print out the mapping for debugging
 # print(label_to_int_mapping)
+
+# Count the occurrences of each label in the label_dict
+class_counts = Counter(label_dict.values())
+
+# Map class counts to indices based on the `label_to_int_mapping`
+class_counts = {label_to_int_mapping[label]: count for label, count in class_counts.items()}
+
+# Fill in missing classes with zero count
+for i in range(len(class_names)):
+    class_counts.setdefault(i, 0)
 
 def get_label(file_path):
     # Extract the filename from the full path
@@ -172,6 +183,7 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
 def main_train(epochs, name):
     checkpoint_cb = get_checkpoint_callback(name)
+    class_weights = {i: total_images / (len(class_names) * class_counts[i]) for i in range(len(class_names))}
     early_stopping_cb = keras.callbacks.EarlyStopping(
         patience=10, restore_best_weights=True
     )
@@ -191,6 +203,7 @@ def main_train(epochs, name):
         epochs=epochs,
         validation_data=val_ds,
         callbacks=[checkpoint_cb, early_stopping_cb],
+        class_weight=class_weights,
     )
     model.save(name)
     return history, model
