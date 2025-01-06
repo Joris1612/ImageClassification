@@ -1,12 +1,12 @@
 from train import train_model, val_ds, class_names
-from validate import validate_model, plot_training_history
+from validate import validate_model
 import tensorflow as tf
 
 def main():
-    epochs = 5
-    name = "XRAY-E5.keras"
+    epochs = 10
+    name = "XRAY-E10-multi-label.keras"
     print("Starting training...")
-    train_model(epochs, name)
+    #train_model(epochs, name)
     print("Training completed.")
     # Load the saved model
     print("Loading the trained model...")
