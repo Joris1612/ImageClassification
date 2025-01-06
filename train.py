@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import keras
 from keras import layers, mixed_precision
+import numpy as np
 
 policy = mixed_precision.Policy('mixed_float16')
 mixed_precision.set_global_policy(policy)
@@ -35,62 +36,63 @@ label_df = pd.read_csv(r"C:\Users\mathi\OneDrive\Documents\School\Dataset\Data_E
 # Strip extra spaces from column names
 label_df.columns = label_df.columns.str.strip()
 
+# Dictionary to store multi-label classification
 label_dict = {}
 
 for idx, row in label_df.iterrows():
     image_name = os.path.basename(row["Image Index"]).strip().lower()
     labels = row["Finding Labels"].split("|")
 
-    # Find the first matching class from class_names
+    # Multi-hot encoding
+    multi_hot_vector = np.zeros(len(class_names), dtype=np.int32)
     for label in labels:
         label = label.strip()
         if label in class_names:
-            label_dict[image_name] = label
-            break
+            multi_hot_vector[label_to_int_mapping[label]] = 1
 
-# Print out the mapping for debugging
-# print(label_to_int_mapping)
+    label_dict[image_name] = multi_hot_vector
+
 
 def get_label(file_path):
-    # Extract the filename from the full path
+    """Extract filename and return multi-hot encoded label."""
     image_name = os.path.basename(file_path.numpy().decode("utf-8")).strip().lower()
-
-    # Use the label_dict to get the string label, then convert it to an integer
-    label_string = label_dict.get(image_name, "unknown")
-
-    return label_to_int_mapping.get(label_string, -1)
+    return label_dict.get(image_name, np.zeros(len(class_names), dtype=np.int32))
 
 
 def tf_get_label(file_path):
-    return tf.py_function(func=get_label, inp=[file_path], Tout=tf.int32)
+    """Use tf.py_function to wrap the Python function `get_label`."""
+    label = tf.py_function(func=get_label, inp=[file_path], Tout=tf.int32)
+    label.set_shape([len(class_names)])  # Ensure shape consistency
+    return label
 
 
 def decode_img(img):
+    """Decode and resize image."""
     img = tf.image.decode_jpeg(img, channels=3)
-    img = tf.image.resize(img, IMAGE_SIZE)
+    img = tf.image.resize(img, (128, 128))  # Ensure correct image size
     return img
 
 
 def process_path(file_path):
+    """Process image and corresponding label."""
     label = tf_get_label(file_path)
     img = tf.io.read_file(file_path)
     img = decode_img(img)
-    return img, tf.reshape(label, [])
-
-@tf.function
-def preprocess_dataset(image, label):
-    label = tf.one_hot(label, depth=len(class_names))
-    return image, label
+    return img, tf.cast(label, tf.float32)  # Ensure labels are float32
 
 
-# Create the TensorFlow dataset
+# Set batch size
+BATCH_SIZE = 32
+AUTOTUNE = tf.data.AUTOTUNE
+
+# Create TensorFlow dataset
 ds = tf.data.Dataset.list_files(r"C:\Users\mathi\OneDrive\Documents\School\Dataset\images\*.png")
+
+# First map `process_path` before batching
 ds = ds.map(process_path, num_parallel_calls=AUTOTUNE)
 
-# Apply the preprocess function
-ds = ds.map(preprocess_dataset)
-
-#LC (lower shuffle, more images taken)
+# Apply batching after mapping
+ds = ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 
 total_images = 112120
 ds = ds.shuffle(1000)
@@ -101,25 +103,6 @@ val_size = total_images - train_size
 
 train_ds = ds.take(train_size)
 val_ds = ds.skip(train_size).take(val_size)
-
-
-def prepare_for_training(ds, cache=False):
-    # If not caching, skip the caching step
-    if cache:
-        # Only cache if needed (for small datasets or if you are sure you have enough memory)
-        ds = ds.cache()
-
-    # Perform batching
-    ds = ds.batch(BATCH_SIZE)
-
-    # Prefetch for asynchronous data loading
-    ds = ds.prefetch(buffer_size=AUTOTUNE)
-
-    return ds
-
-
-train_ds = prepare_for_training(train_ds)
-val_ds = prepare_for_training(val_ds)
 
 
 
@@ -148,7 +131,7 @@ def build_model():
     x = conv_block(8, x)
     x = layers.GlobalAveragePooling2D()(x)
     x = dense_block(32, 0.5, x)
-    outputs = layers.Dense(len(class_names), activation="softmax")(x)
+    outputs = layers.Dense(len(class_names), activation="sigmoid")(x)
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
 
@@ -178,8 +161,8 @@ def main_train(epochs, name):
     with strategy.scope():
         model = build_model()
         model.compile(
-            optimizer=optimizer,
-            loss="categorical_crossentropy",
+            optimizer='adam',
+            loss="binary_crossentropy",
             metrics=[
                 keras.metrics.BinaryAccuracy(),
                 keras.metrics.Precision(name="precision"),

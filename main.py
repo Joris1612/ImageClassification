@@ -3,8 +3,8 @@ from validate import validate_model, plot_training_history
 import tensorflow as tf
 
 def main():
-    epochs = 10
-    name = "XRAY-E10.keras"
+    epochs = 5
+    name = "XRAY-E5.keras"
     print("Starting training...")
     train_model(epochs, name)
     print("Training completed.")
