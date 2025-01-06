@@ -69,42 +69,48 @@ def tf_get_label(file_path):
 def decode_img(img):
     """Decode and resize image."""
     img = tf.image.decode_jpeg(img, channels=3)
-    img = tf.image.resize(img, (128, 128))  # Ensure correct image size
+    img = tf.image.resize(img, (128, 128))
     return img
 
 
 def process_path(file_path):
-    """Process image and corresponding label."""
-    label = tf_get_label(file_path)
     img = tf.io.read_file(file_path)
-    img = decode_img(img)
-    return img, tf.cast(label, tf.float32)  # Ensure labels are float32
+    img = tf.image.decode_png(img, channels=3)
+    img = tf.image.resize(img, [128, 128])
+
+    label = tf_get_label(file_path)
+
+    return img, label
 
 
 # Set batch size
-BATCH_SIZE = 32
 AUTOTUNE = tf.data.AUTOTUNE
 
 # Create TensorFlow dataset
 ds = tf.data.Dataset.list_files(r"C:\Users\mathi\OneDrive\Documents\School\Dataset\images\*.png")
 
-# First map `process_path` before batching
-ds = ds.map(process_path, num_parallel_calls=AUTOTUNE)
+# Convert the dataset to a list to check its size (no mapping or batching yet)
+ds_list = list(ds)
 
-# Apply batching after mapping
-ds = ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 
-total_images = 112120
-ds = ds.shuffle(1000)
-
-# Define the number of training and validation samples (e.g., 80% training, 20% validation)
+# Define the split sizes
+total_images = len(ds_list)
 train_size = int(0.8 * total_images)
 val_size = total_images - train_size
 
+# Split dataset into training and validation sets **before** applying map and batch
 train_ds = ds.take(train_size)
 val_ds = ds.skip(train_size).take(val_size)
 
 
+# Apply map before batching
+train_ds = train_ds.map(process_path, num_parallel_calls=AUTOTUNE)
+val_ds = val_ds.map(process_path, num_parallel_calls=AUTOTUNE)
+
+
+# Apply batching and prefetching after mapping
+train_ds = train_ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
+val_ds = val_ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 
 def conv_block(filters, inputs):
     x = layers.SeparableConv2D(filters, 3, activation="relu", padding="same")(inputs)
@@ -181,7 +187,7 @@ def main_train(epochs, name):
 
 # Prevent automatic execution when imported
 if __name__ == "__main__":
-    history, model = main_train(epochs=10, name="XRAY-model.keras")
+    history, model = main_train(epochs=1, name="test.keras")
 
 
 def train_model(epochs, name):
