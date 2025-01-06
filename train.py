@@ -132,7 +132,9 @@ def dense_block(units, dropout_rate, inputs):
 def build_model():
     inputs = keras.Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3))
     x = layers.Rescaling(1.0 / 255)(inputs)
-    x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
+    x = layers.Conv2D(32, 3, activation="relu", padding="same")(x)
+    x = layers.Conv2D(64, 3, activation="relu", padding="same")(x)
+    x = layers.Conv2D(128, 3, activation="relu", padding="same")(x)
     x = layers.MaxPool2D(pool_size=(1, 1), strides=(1, 1), padding="valid")(x)
     x = conv_block(8, x)
     x = layers.GlobalAveragePooling2D()(x)
