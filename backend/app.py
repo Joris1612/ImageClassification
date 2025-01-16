@@ -13,7 +13,6 @@ from backend.predict import predict_single_image
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-MODEL_PATH = 'path_to_your_model.h5'  # Update this path to your actual model
 
 
 @app.route('/upload', methods=['POST'])
@@ -34,6 +33,7 @@ def upload_file():
         predicted_labels = predict_single_image(save_path)
 
         return jsonify({'predicted_labels': predicted_labels}), 200
+
 
 if __name__ == '__main__':
     app.run(debug=True)

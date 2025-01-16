@@ -31,7 +31,7 @@ class_names = [
 label_to_int_mapping = {name: idx for idx, name in enumerate(class_names)}
 
 # Load the CSV file
-label_df = pd.read_csv(r"C:\Users\mathi\OneDrive\Documents\School\Dataset\Data_Entry_2017_v2020.csv")
+label_df = pd.read_csv(r"C:\Users\su1\PycharmProjects\ImageClassification\Data_Entry_2017_v2020.csv")
 
 # Strip extra spaces from column names
 label_df.columns = label_df.columns.str.strip()
@@ -87,7 +87,7 @@ def process_path(file_path):
 AUTOTUNE = tf.data.AUTOTUNE
 
 # Create TensorFlow dataset
-ds = tf.data.Dataset.list_files(r"C:\Users\mathi\OneDrive\Documents\School\Dataset\images\*.png")
+ds = tf.data.Dataset.list_files(r"C:\Users\su1\PycharmProjects\ImageClassification\images\*.png")
 
 # Convert the dataset to a list to check its size (no mapping or batching yet)
 ds_list = list(ds)
@@ -188,6 +188,7 @@ def main_train(epochs, name):
 # Prevent automatic execution when imported
 if __name__ == "__main__":
     history, model = main_train(epochs=1, name="test.keras")
+    print(history)
 
 
 def train_model(epochs, name):
