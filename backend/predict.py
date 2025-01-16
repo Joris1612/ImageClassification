@@ -3,13 +3,19 @@ import os
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
 
 
-def predict_single_image(model_path, img_path, class_names, threshold=0.5, img_size=(128, 128)):
+def predict_single_image( img_path):
     # Load the model
+    model_path = '../XRAY-E10-multi-label-v2.keras'
+    class_names = [
+        "Atelectasis", "Cardiomegaly", "Effusion", "Infiltration", "Mass",
+        "Nodule", "Pneumonia", "Pneumothorax", "Consolidation", "Edema",
+        "Emphysema", "Fibrosis", "Pleural_Thickening", "Hernia"
+    ]
+    img_size = (128, 128)
     model = tf.keras.models.load_model(model_path)
-
+    print(f'predicting image {img_path}')
     # Load and preprocess the image
     img = Image.open(img_path).resize(img_size)  # Use PIL to open and resize image
     img_array = np.array(img) / 255.0  # Convert image to numpy array and normalize
@@ -23,27 +29,10 @@ def predict_single_image(model_path, img_path, class_names, threshold=0.5, img_s
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
 
     # Predict
+
     predictions = model.predict(img_array)[0]  # Get the first and only batch
+    predicted_percentages = [float(pred * 100) for pred in predictions]
 
-    # Convert probabilities to binary labels
-    predicted_labels = [class_names[i] for i, prob in enumerate(predictions) if prob > threshold]
+    predicted_labels = dict(zip(class_names, predicted_percentages))
 
-    # Plotting the image
-    plt.imshow(img.convert('RGB'))  # Ensure image is displayed in RGB format
-    plt.title(f"Predicted: {', '.join(predicted_labels)}")
-    plt.axis('off')
-    plt.show()
-
-    return predictions, predicted_labels
-
-
-# Example usage:
-model_path = '../XRAY-E10-multi-label.keras'  # Update path as necessary
-image_path = os.path.join('../images', '00000001_001.png')  # Update to your image path
-class_names = [
-    "Atelectasis", "Cardiomegaly", "Effusion", "Infiltration", "Mass",
-    "Nodule", "Pneumonia", "Pneumothorax", "Consolidation", "Edema",
-    "Emphysema", "Fibrosis", "Pleural_Thickening", "Hernia"
-]
-
-predictions, predicted_labels = predict_single_image(model_path, image_path, class_names)
+    return predicted_labels
