@@ -3,11 +3,11 @@ from validate import validate_model
 import tensorflow as tf
 
 def main():
-    epochs = 10
+    #epochs = 20
     name = "XRAY-E10-multi-label.keras"
-    print("Starting training...")
+    #print("Starting training...")
     #train_model(epochs, name)
-    print("Training completed.")
+    #print("Training completed.")
     # Load the saved model
     print("Loading the trained model...")
     trained_model = tf.keras.models.load_model(name)

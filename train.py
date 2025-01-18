@@ -92,7 +92,6 @@ ds = tf.data.Dataset.list_files(r"C:\Users\mathi\OneDrive\Documents\School\Datas
 # Convert the dataset to a list to check its size (no mapping or batching yet)
 ds_list = list(ds)
 
-
 # Define the split sizes
 total_images = len(ds_list)
 train_size = int(0.8 * total_images)
@@ -102,15 +101,14 @@ val_size = total_images - train_size
 train_ds = ds.take(train_size)
 val_ds = ds.skip(train_size).take(val_size)
 
-
 # Apply map before batching
 train_ds = train_ds.map(process_path, num_parallel_calls=AUTOTUNE)
 val_ds = val_ds.map(process_path, num_parallel_calls=AUTOTUNE)
 
-
 # Apply batching and prefetching after mapping
 train_ds = train_ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 val_ds = val_ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
+
 
 def conv_block(filters, inputs):
     x = layers.SeparableConv2D(filters, 3, activation="relu", padding="same")(inputs)
@@ -128,11 +126,12 @@ def dense_block(units, dropout_rate, inputs):
 
     return outputs
 
-
+''' Homemade model
 def build_model():
     inputs = keras.Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3))
     x = layers.Rescaling(1.0 / 255)(inputs)
-    x = layers.Conv2D(8, 3, activation="relu", padding="same")(x)
+    x = layers.Conv2D(16, 3, activation="relu", padding="same")(x)
+    x = layers.Conv2D(32, 3, activation="relu", padding="same")(x)
     x = layers.MaxPool2D(pool_size=(1, 1), strides=(1, 1), padding="valid")(x)
     x = conv_block(8, x)
     x = layers.GlobalAveragePooling2D()(x)
@@ -140,10 +139,40 @@ def build_model():
     outputs = layers.Dense(len(class_names), activation="sigmoid")(x)
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
+'''
+
+
+def build_model():
+    base_model = keras.applications.ResNet50(
+        weights="imagenet",
+        include_top=False,
+        input_shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3)
+    )
+
+    # Freeze the base model
+    base_model.trainable = False
+
+    inputs = keras.Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3))
+    x = layers.Rescaling(1.0 / 255)(inputs)
+
+    x = base_model(x, training=False)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(512, activation="relu")(x)
+    x = layers.Dropout(0.5)(x)
+    x = layers.Dense(256, activation="relu")(x)
+    x = layers.Dropout(0.3)(x)
+
+    outputs = layers.Dense(len(class_names), activation="sigmoid")(x)
+
+    model = keras.Model(inputs, outputs)
+
+    return model
+
 
 def get_checkpoint_callback(name):
     checkpoint_cb = keras.callbacks.ModelCheckpoint(name, save_best_only=True, verbose=1)
     return checkpoint_cb
+
 
 early_stopping_cb = keras.callbacks.EarlyStopping(
     patience=10, restore_best_weights=True
@@ -156,7 +185,6 @@ lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
     staircase=True)
 
 optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-
 
 
 def main_train(epochs, name):
