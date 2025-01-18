@@ -5,6 +5,7 @@ import keras
 from keras import layers, mixed_precision
 import numpy as np
 
+#set policy
 policy = mixed_precision.Policy('mixed_float16')
 mixed_precision.set_global_policy(policy)
 
@@ -16,6 +17,7 @@ except:
     strategy = tf.distribute.get_strategy()
 print("Number of replicas:", strategy.num_replicas_in_sync)
 
+#set some variables
 AUTOTUNE = tf.data.AUTOTUNE
 BATCH_SIZE = 32 * strategy.num_replicas_in_sync
 IMAGE_SIZE = [128, 128]
@@ -38,7 +40,6 @@ label_df.columns = label_df.columns.str.strip()
 
 # Dictionary to store multi-label classification
 label_dict = {}
-
 for idx, row in label_df.iterrows():
     image_name = os.path.basename(row["Image Index"]).strip().lower()
     labels = row["Finding Labels"].split("|")
@@ -52,27 +53,24 @@ for idx, row in label_df.iterrows():
 
     label_dict[image_name] = multi_hot_vector
 
-
+#Extract filename and return multi-hot encoded label.
 def get_label(file_path):
-    """Extract filename and return multi-hot encoded label."""
     image_name = os.path.basename(file_path.numpy().decode("utf-8")).strip().lower()
     return label_dict.get(image_name, np.zeros(len(class_names), dtype=np.int32))
 
-
+#Use tf.py_function to wrap the Python function `get_label`.
 def tf_get_label(file_path):
-    """Use tf.py_function to wrap the Python function `get_label`."""
     label = tf.py_function(func=get_label, inp=[file_path], Tout=tf.int32)
     label.set_shape([len(class_names)])  # Ensure shape consistency
     return label
 
-
+#Decode and resize image.
 def decode_img(img):
-    """Decode and resize image."""
     img = tf.image.decode_jpeg(img, channels=3)
     img = tf.image.resize(img, (128, 128))
     return img
 
-
+#image processing
 def process_path(file_path):
     img = tf.io.read_file(file_path)
     img = tf.image.decode_png(img, channels=3)
@@ -83,7 +81,7 @@ def process_path(file_path):
     return img, label
 
 
-# Set batch size
+# Set autotune
 AUTOTUNE = tf.data.AUTOTUNE
 
 # Create TensorFlow dataset
@@ -109,7 +107,7 @@ val_ds = val_ds.map(process_path, num_parallel_calls=AUTOTUNE)
 train_ds = train_ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 val_ds = val_ds.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 
-
+#add convolutional blocks
 def conv_block(filters, inputs):
     x = layers.SeparableConv2D(filters, 3, activation="relu", padding="same")(inputs)
     x = layers.SeparableConv2D(filters, 3, activation="relu", padding="same")(x)
@@ -118,7 +116,7 @@ def conv_block(filters, inputs):
     outputs = layers.MaxPool2D(pool_size=(1, 1), strides=(1, 1), padding="valid")(x)
     return outputs
 
-
+#add dense blocks
 def dense_block(units, dropout_rate, inputs):
     x = layers.Dense(units, activation="relu")(inputs)
     x = layers.BatchNormalization()(x)
@@ -126,6 +124,7 @@ def dense_block(units, dropout_rate, inputs):
 
     return outputs
 
+#old model made from scratch/homemade
 ''' Homemade model
 def build_model():
     inputs = keras.Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3))
@@ -141,7 +140,7 @@ def build_model():
     return model
 '''
 
-
+#build the model
 def build_model():
     base_model = keras.applications.ResNet50(
         weights="imagenet",
@@ -168,7 +167,7 @@ def build_model():
 
     return model
 
-
+#checkpoint method to save the best model after an epoch
 def get_checkpoint_callback(name):
     checkpoint_cb = keras.callbacks.ModelCheckpoint(name, save_best_only=True, verbose=1)
     return checkpoint_cb
@@ -186,7 +185,7 @@ lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
 
 optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
-
+#main training method
 def main_train(epochs, name):
     checkpoint_cb = get_checkpoint_callback(name)
     early_stopping_cb = keras.callbacks.EarlyStopping(
